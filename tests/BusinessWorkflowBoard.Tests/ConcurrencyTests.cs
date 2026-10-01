@@ -8,11 +8,15 @@ namespace BusinessWorkflowBoard.Tests;
 
 public class ConcurrencyTests
 {
+    // Verify that an outdated handoff cannot overwrite a completed task
+    // or leave behind a history entry from the rejected save.
     [Fact]
     public async Task StaleHandoff_CannotModifyCompletedTask()
     {
+        // Start the test host with an isolated SQLite database.
         using var factory = new WorkflowApplicationFactory();
 
+        // Create an active task that both contexts will later load.
         using var setupScope = factory.Services.CreateScope();
         var setupDb = setupScope.ServiceProvider
             .GetRequiredService<WorkflowDbContext>();
@@ -30,7 +34,8 @@ public class ConcurrencyTests
         setupDb.Tasks.Add(task);
         await setupDb.SaveChangesAsync();
 
-        // Two separate contexts read the same task version.
+        // Separate scopes provide independent contexts and change trackers.
+        // This simulates two operations loading the same task before either saves.
         using var firstScope = factory.Services.CreateScope();
         using var secondScope = factory.Services.CreateScope();
 
@@ -46,16 +51,18 @@ public class ConcurrencyTests
         var staleTask = await secondDb.Tasks.SingleAsync(
             t => t.Id == task.Id);
 
+        // Confirm that both copies initially have the same concurrency token.
         var originalVersion = staleTask.Version;
         Assert.Equal(originalVersion, firstTask.Version);
 
-        // The first request completes the task.
+        // The first operation completes the task and saves a new version.
         firstTask.Status = WorkflowStatus.Completed;
         await firstDb.SaveChangesAsync();
 
         Assert.NotEqual(originalVersion, firstTask.Version);
 
-        // The second request still holds the old InProgress copy.
+        // The second context still holds its original InProgress copy.
+        // Attempt a transfer using that outdated version.
         staleTask.OwningDepartment = Department.IT;
         staleTask.Handoffs.Add(new HandoffEntry(
             Department.Operations,
@@ -63,10 +70,11 @@ public class ConcurrencyTests
             "This outdated handoff must not be saved.",
             DateTimeOffset.UtcNow));
 
+        // EF must reject the save because the stored version has changed.
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(
             () => secondDb.SaveChangesAsync());
 
-        // Verify that the failed save left no partial changes.
+        // Use a fresh context to inspect persisted data rather than tracked copies.
         using var verificationScope = factory.Services.CreateScope();
 
         var verificationDb = verificationScope.ServiceProvider
@@ -76,6 +84,8 @@ public class ConcurrencyTests
             .AsNoTracking()
             .SingleAsync(t => t.Id == task.Id);
 
+        // Preserve the successful completion and its version.
+        // The failed transfer must change neither the owner nor the history.
         Assert.Equal(WorkflowStatus.Completed, savedTask.Status);
         Assert.Equal(Department.Operations, savedTask.OwningDepartment);
         Assert.Empty(savedTask.Handoffs);

@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+
+    <!-- Let the responsive layout use the device's actual viewport width. -->
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Business Workflow Task Board</title>
+
     <style>
+        /* Center the page and set its shared typography and colors. */
         body {
             font-family: system-ui, sans-serif;
             max-width: 1400px;
@@ -17,6 +21,8 @@
         #connectionStatus { color: #475569; }
         #error { color: #b91c1c; }
 
+        /* Show four workflow columns on wide screens.
+           Align columns at the top without stretching them to equal heights. */
         .board {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -32,11 +38,15 @@
             font-size: 16px;
             margin: 0 0 14px;
         }
+
+        /* Keep list semantics while removing the default bullets and spacing. */
         .task-list {
             list-style: none;
             margin: 0;
             padding: 0;
         }
+
+        /* Style each request and allow long text to wrap inside its card. */
         .task-card {
             background: white;
             padding: 16px;
@@ -55,6 +65,7 @@
             color: #475569;
         }
 
+        /* Share button styling across creation, workflow, and handoff actions. */
         .task-action {
             margin-top: 12px;
             padding: 8px 14px;
@@ -67,16 +78,21 @@
             cursor: pointer;
         }
         .task-action:hover { background: #1d4ed8; }
+
+        /* Indicate that an action is waiting for its API response. */
         .task-action:disabled {
             opacity: 0.6;
             cursor: wait;
         }
+
+        /* Make keyboard focus visible. */
         .task-action:focus-visible {
             outline: 3px solid #93c5fd;
             outline-offset: 2px;
         }
         .empty { color: #64748b; font-size: 14px; }
 
+        /* Reduce the board to two columns, then one, on smaller screens. */
         @media (max-width: 1100px) {
             .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
@@ -84,6 +100,7 @@
             .board { grid-template-columns: 1fr; }
         }
 
+        /* Style the expandable request creation form. */
         .request-panel {
             background: white;
             padding: 18px;
@@ -108,6 +125,7 @@
         }
         .form-error { color: #b91c1c; }
 
+        /* Separate handoff forms and history from the main card content. */
         .handoff-controls,
         .handoff-history {
             margin-top: 14px;
@@ -143,8 +161,13 @@
 <body>
     <h1>Business Workflow Task Board</h1>
     <p>Track requests and ownership across departments.</p>
+
+    <!-- Announce connection changes and action errors to assistive technology. -->
     <p id="connectionStatus" role="status">Connecting…</p>
     <p id="error" role="alert"></p>
+
+    <!-- Supply the demo reviewer department sent with approval requests.
+         This selection does not represent an authenticated user identity. -->
     <p>
         <label for="reviewerDepartment">Demo reviewer department:</label>
         <select id="reviewerDepartment">
@@ -155,10 +178,13 @@
             <option value="CustomerSupport">Customer Support</option>
         </select>
     </p>
+
+    <!-- Keep creation controls outside the board that live updates rebuild. -->
     <details class="request-panel">
         <summary>Create a business request</summary>
 
         <form id="createTaskForm">
+            <!-- A fieldset lets JavaScript disable all creation controls together. -->
             <fieldset id="createTaskFields">
                 <label>
                     Title
@@ -170,6 +196,7 @@
                     <textarea name="description" maxlength="2000" rows="3"></textarea>
                 </label>
 
+                <!-- Option values match the enum names accepted by the API. -->
                 <label>
                     Requesting department
                     <select name="requestingDepartment">
@@ -208,6 +235,9 @@
         <p id="createTaskError" class="form-error" role="alert"></p>
         <p id="createTaskStatus" role="status"></p>
     </details>
+
+    <!-- Filter this browser's view by current owner.
+         An empty value displays all departments. -->
     <p>
         <label for="ownerFilter">Owning department:</label>
         <select id="ownerFilter">
@@ -219,15 +249,22 @@
             <option value="CustomerSupport">Customer Support</option>
         </select>
     </p>
+
+    <!-- JavaScript creates the workflow columns and task cards here. -->
     <div id="tasks" class="board"></div>
 
+    <!-- Load the SignalR browser client before using it below. -->
     <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@10.0.0/dist/browser/signalr.min.js"></script>
     <script>
         const status = document.getElementById("connectionStatus");
         const errorMessage = document.getElementById("error");
         const taskList = document.getElementById("tasks");
+
+        // Identify overlapping loads so an older response cannot redraw newer results.
         let loadVersion = 0;
 
+        // Preserve handoff drafts by task ID across board redraws.
+        // These drafts belong to this page and disappear after a full reload.
         const handoffDrafts = new Map();
 
         const createForm = document.getElementById("createTaskForm");
@@ -235,11 +272,14 @@
         const createError = document.getElementById("createTaskError");
         const createStatus = document.getElementById("createTaskStatus");
 
+        // Submit through the API instead of navigating away from the board.
         createForm.addEventListener("submit", async (event) => {
             event.preventDefault();
 
             if (createFields.disabled) return;
 
+            // Capture values before disabling the fieldset.
+            // Disabled form controls are omitted from FormData.
             const fields = new FormData(createForm);
 
             const request = {
@@ -250,6 +290,7 @@
                 kind: fields.get("kind")
             };
 
+            // Prevent another creation submission while this request is pending.
             createFields.disabled = true;
             createError.textContent = "";
             createStatus.textContent = "Creating request…";
@@ -261,6 +302,7 @@
                     body: JSON.stringify(request)
                 });
 
+                // HTTP error responses do not automatically make fetch throw.
                 if (!response.ok) {
                     const problem = await response.json().catch(() => null);
 
@@ -271,6 +313,7 @@
 
                 const createdTask = await response.json();
 
+                // Reset only after creation succeeds so errors preserve the inputs.
                 createForm.reset();
                 createStatus.textContent = `Created: ${createdTask.title}`;
 
@@ -279,10 +322,12 @@
                 createStatus.textContent = "";
                 createError.textContent = error.message;
             } finally {
+                // Restore the controls after either success or failure.
                 createFields.disabled = false;
             }
         });
 
+        // Share API submission and error handling across all task actions.
         async function runTaskAction(taskId, action, button, body = null) {
             button.disabled = true;
             errorMessage.textContent = "";
@@ -290,6 +335,7 @@
             try {
                 const options = { method: "POST" };
 
+                // Approval and handoff send JSON; other actions need no body.
                 if (body !== null) {
                     options.headers = {
                         "Content-Type": "application/json"
@@ -310,6 +356,7 @@
                     );
                 }
 
+                // Clear the handoff draft only after the transfer succeeds.
                 if (action === "handoff") {
                     handoffDrafts.delete(taskId);
                 }
@@ -322,6 +369,7 @@
             }
         }
 
+        // Add a transfer form only while the task is actively being worked on.
         function appendHandoffControls(card, task) {
             if (task.status !== "InProgress") return;
 
@@ -355,6 +403,7 @@
 
             const noteInput = form.querySelector("textarea");
 
+            // Reuse an existing draft when live updates rebuild this card.
             const draft = handoffDrafts.get(task.id) ?? {
                 targetDepartment: "",
                 note: "",
@@ -368,6 +417,7 @@
             ];
 
             for (const department of departments) {
+                // A handoff must transfer responsibility to a different owner.
                 if (department === task.owningDepartment) continue;
 
                 const label = department === "CustomerSupport"
@@ -377,10 +427,12 @@
                 targetSelect.add(new Option(label, department));
             }
 
+            // Restore the draft values and whether the form was expanded.
             targetSelect.value = draft.targetDepartment;
             noteInput.value = draft.note;
             panel.open = draft.open;
 
+            // Save edits immediately so an unrelated update does not erase them.
             function saveDraft() {
                 draft.targetDepartment = targetSelect.value;
                 draft.note = noteInput.value;
@@ -410,6 +462,7 @@
             card.append(panel);
         }
 
+        // Display the saved transfer history beneath the task details.
         function appendHandoffHistory(card, task) {
             if (task.handoffs.length === 0) return;
 
@@ -421,6 +474,7 @@
 
             const list = document.createElement("ol");
 
+            // Sort a copy from oldest to newest without modifying the response array.
             const history = [...task.handoffs].sort(
                 (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt)
             );
@@ -436,6 +490,8 @@
                 note.textContent = entry.note;
 
                 const timestamp = document.createElement("p");
+
+                // Display the saved timestamp in the browser's local time and format.
                 timestamp.textContent =
                     new Date(entry.occurredAt).toLocaleString();
 
@@ -447,6 +503,7 @@
             card.append(panel);
         }
 
+        // Fetch saved tasks and rebuild the board using the current owner filter.
         async function loadTasks() {
             const version = ++loadVersion;
 
@@ -461,17 +518,21 @@
 
                 const tasks = await response.json();
 
+                // Ignore this response if a later load has already started.
                 if (version !== loadVersion) return;
 
+                // Show newer requests first using parsed timestamps.
                 tasks.sort((a, b) =>
                     Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
                 const selectedOwner = document.getElementById("ownerFilter").value;
 
+                // Filtering affects the displayed tasks and counts in this browser.
                 const visibleTasks = tasks.filter(task =>
                     selectedOwner === "" ||
                     task.owningDepartment === selectedOwner
                 );
+
                 const columns = [
                     { status: "Queued", label: "Queued" },
                     { status: "InProgress", label: "In Progress" },
@@ -479,6 +540,8 @@
                     { status: "Completed", label: "Completed" }
                 ];
 
+                // Remember the focused handoff control and text selection
+                // before replacing the existing card elements.
                 const activeField = document.activeElement;
 
                 const focusedHandoff = activeField?.closest(".handoff-form")
@@ -509,8 +572,11 @@
                     for (const task of matchingTasks) {
                         const card = document.createElement("li");
                         card.className = "task-card";
+
+                        // Use the task ID to locate the rebuilt card when restoring focus.
                         card.dataset.taskId = task.id;
 
+                        // Render user-entered content as text instead of interpreting HTML.
                         const title = document.createElement("h3");
                         title.textContent = task.title;
 
@@ -531,6 +597,8 @@
                         let action = null;
                         let buttonLabel = "";
 
+                        // Show the next workflow action for this task.
+                        // The API independently validates the state and approval rules.
                         if (task.status === "Queued") {
                             action = "start";
                             buttonLabel = "Start";
@@ -550,6 +618,7 @@
                             buttonLabel = "Approve";
                         }
 
+                        // Completed tasks have no next action button.
                         if (action !== null) {
                             const actionButton = document.createElement("button");
                             actionButton.type = "button";
@@ -557,6 +626,7 @@
                             actionButton.textContent = buttonLabel;
 
                             actionButton.addEventListener("click", () => {
+                                // Read the reviewer selection at click time.
                                 const body = action === "approve"
                                     ? {
                                         reviewerDepartment:
@@ -587,6 +657,7 @@
                     taskList.append(section);
                 }
 
+                // Resume editing if the handoff control is still visible after the redraw.
                 if (focusedHandoff) {
                     const field = taskList.querySelector(
                         `[data-task-id="${focusedHandoff.taskId}"] ` +
@@ -596,6 +667,7 @@
                     if (field) {
                         field.focus({ preventScroll: true });
 
+                        // Text controls support caret restoration; select controls do not.
                         if (
                             typeof field.setSelectionRange === "function" &&
                             focusedHandoff.start != null
@@ -610,6 +682,7 @@
 
                 errorMessage.textContent = "";
             } catch (error) {
+                // An older failed load should not replace the latest load's message.
                 if (version === loadVersion) {
                     errorMessage.textContent = error.message;
                 }
@@ -619,11 +692,14 @@
         document.getElementById("ownerFilter")
             .addEventListener("change", loadTasks);
 
+        // Connect to the hub route registered in Program.cs.
+        // Automatic reconnect handles interruptions after a connection is established.
         const connection = new signalR.HubConnectionBuilder()
             .withUrl("/hubs/workflow")
             .withAutomaticReconnect()
             .build();
 
+        // Treat notifications as refresh triggers and fetch current saved data.
         connection.on("TaskChanged", () => {
             loadTasks();
         });
@@ -632,6 +708,7 @@
             status.textContent = "Reconnecting…";
         });
 
+        // Catch up on changes that happened while disconnected.
         connection.onreconnected(() => {
             status.textContent = "Live updates connected";
             loadTasks();
@@ -641,6 +718,7 @@
             status.textContent = "Disconnected. Reload the page to reconnect.";
         });
 
+        // Retry initial connection failures separately from automatic reconnect.
         async function startConnection() {
             try {
                 await connection.start();
@@ -652,6 +730,7 @@
             }
         }
 
+        // Load the board immediately, then establish its live-update connection.
         loadTasks();
         startConnection();
     </script>

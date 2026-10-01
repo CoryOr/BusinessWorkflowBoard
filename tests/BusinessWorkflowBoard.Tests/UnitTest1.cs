@@ -7,13 +7,15 @@ namespace BusinessWorkflowBoard.Tests;
 
 public class PurchaseWorkflowTests
 {
+    // Verify the purchase lifecycle and enforce the required reviewer department.
     [Fact]
     public async Task PurchaseRequest_RequiresFinanceApproval()
     {
+        // Run API requests against the test host and its isolated database.
         using var factory = new WorkflowApplicationFactory();
         using var client = factory.CreateClient();
 
-        // Create a purchase request.
+        // Create a purchase request owned by Operations and requiring Finance review.
         using var created = await client.PostAsJsonAsync("/api/tasks", new
         {
             title = "Purchase monitor for analyst",
@@ -25,6 +27,7 @@ public class PurchaseWorkflowTests
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
+        // Use the returned ID to target this task in subsequent requests.
         using var createdJson = JsonDocument.Parse(
             await created.Content.ReadAsStringAsync());
 
@@ -33,14 +36,14 @@ public class PurchaseWorkflowTests
 
         Assert.Equal("Queued", await GetStatusAsync(client, taskUrl));
 
-        // Start the work.
+        // Start the work and verify the saved transition to InProgress.
         using var started = await client.PostAsync(
             $"{taskUrl}/start", null);
 
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         Assert.Equal("InProgress", await GetStatusAsync(client, taskUrl));
 
-        // Submit the request for review.
+        // Submit active work for approval and verify it enters the review state.
         using var submitted = await client.PostAsync(
             $"{taskUrl}/submit-for-approval", null);
 
@@ -48,7 +51,7 @@ public class PurchaseWorkflowTests
         Assert.Equal(
             "AwaitingApproval", await GetStatusAsync(client, taskUrl));
 
-        // IT cannot approve a purchase request.
+        // Reject the wrong reviewer department and preserve the pending review.
         using var denied = await client.PostAsJsonAsync(
             $"{taskUrl}/approve",
             new { reviewerDepartment = "IT" });
@@ -57,7 +60,7 @@ public class PurchaseWorkflowTests
         Assert.Equal(
             "AwaitingApproval", await GetStatusAsync(client, taskUrl));
 
-        // Finance can approve it.
+        // Accept Finance approval and verify that the request is completed.
         using var approved = await client.PostAsJsonAsync(
             $"{taskUrl}/approve",
             new { reviewerDepartment = "Finance" });
@@ -65,7 +68,7 @@ public class PurchaseWorkflowTests
         Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
         Assert.Equal("Completed", await GetStatusAsync(client, taskUrl));
 
-        // A completed request cannot be approved again.
+        // Reject another approval attempt after completion.
         using var repeated = await client.PostAsJsonAsync(
             $"{taskUrl}/approve",
             new { reviewerDepartment = "Finance" });
@@ -73,6 +76,8 @@ public class PurchaseWorkflowTests
         Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
     }
 
+    // Read persisted status through a separate API request,
+    // rather than relying only on each action's response.
     private static async Task<string?> GetStatusAsync(
         HttpClient client, string taskUrl)
     {

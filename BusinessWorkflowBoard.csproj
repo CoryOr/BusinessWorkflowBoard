@@ -1,22 +1,43 @@
+<!-- Use the ASP.NET Core Web SDK to build and publish the web application. -->
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
+    <!-- Target .NET 10. -->
     <TargetFramework>net10.0</TargetFramework>
+
+    <!-- Enable compiler analysis for possible null-reference problems. -->
     <Nullable>enable</Nullable>
+
+    <!-- Automatically import common namespaces to reduce repeated using statements. -->
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Support EF Core design-time operations, including migration commands.
+         Version 10.* allows package versions within the 10.x series. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.*">
+
+      <!-- Specify which package asset types this project consumes. -->
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+
+      <!-- Keep this tooling dependency from flowing to projects that reference this one. -->
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+
+    <!-- Provide the EF Core database provider for SQLite. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.*" />
   </ItemGroup>
 
+  <!-- The test project sits inside the application directory.
+       Exclude its files from the web project's default file collections. -->
   <ItemGroup>
+    <!-- Prevent test source code from being compiled into the web application. -->
     <Compile Remove="tests/**/*.cs" />
+
+    <!-- Prevent test files from being included as web application content. -->
     <Content Remove="tests/**" />
+
+    <!-- Exclude remaining test files from miscellaneous project items. -->
     <None Remove="tests/**" />
   </ItemGroup>
 
