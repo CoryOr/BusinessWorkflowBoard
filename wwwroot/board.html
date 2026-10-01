@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Business Workflow Task Board</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 40px auto;
+            padding: 0 20px;
+            background: #f4f6fa;
+            color: #172033;
+        }
+        h1 { margin-bottom: 8px; }
+        #connectionStatus { color: #475569; }
+        #error { color: #b91c1c; }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+            align-items: start;
+        }
+        .column {
+            background: #e8edf5;
+            padding: 14px;
+            border-radius: 12px;
+        }
+        .column h2 {
+            font-size: 16px;
+            margin: 0 0 14px;
+        }
+        .task-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .task-card {
+            background: white;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid #dbe2ec;
+            border-radius: 10px;
+            overflow-wrap: anywhere;
+        }
+        .task-card h3 {
+            font-size: 16px;
+            margin: 0 0 10px;
+        }
+        .task-card p {
+            font-size: 14px;
+            margin: 6px 0;
+            color: #475569;
+        }
+
+        .task-action {
+            margin-top: 12px;
+            padding: 8px 14px;
+            border: none;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+            font: inherit;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .task-action:hover { background: #1d4ed8; }
+        .task-action:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+        .task-action:focus-visible {
+            outline: 3px solid #93c5fd;
+            outline-offset: 2px;
+        }
+        .empty { color: #64748b; font-size: 14px; }
+
+        @media (max-width: 1100px) {
+            .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 650px) {
+            .board { grid-template-columns: 1fr; }
+        }
+
+        .request-panel {
+            background: white;
+            padding: 18px;
+            margin-bottom: 20px;
+            border: 1px solid #dbe2ec;
+            border-radius: 10px;
+        }
+        .request-panel summary { cursor: pointer; font-weight: 600; }
+        .request-panel fieldset { border: none; margin: 16px 0 0; padding: 0; }
+        .request-panel label { display: block; margin-bottom: 12px; }
+        .request-panel input,
+        .request-panel textarea,
+        .request-panel select {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            margin-top: 6px;
+            padding: 8px;
+            border: 1px solid #94a3b8;
+            border-radius: 6px;
+            font: inherit;
+        }
+        .form-error { color: #b91c1c; }
+
+        .handoff-controls,
+        .handoff-history {
+            margin-top: 14px;
+            border-top: 1px solid #dbe2ec;
+            padding-top: 12px;
+        }
+        .handoff-controls summary,
+        .handoff-history summary {
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .handoff-form label {
+            display: block;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .handoff-form select,
+        .handoff-form textarea {
+            display: block;
+            box-sizing: border-box;
+            width: 100%;
+            margin-top: 6px;
+            padding: 8px;
+            font: inherit;
+            border: 1px solid #94a3b8;
+            border-radius: 6px;
+        }
+        .handoff-history ol { padding-left: 20px; }
+        .handoff-history li { margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <h1>Business Workflow Task Board</h1>
+    <p>Track requests and ownership across departments.</p>
+    <p id="connectionStatus" role="status">Connecting…</p>
+    <p id="error" role="alert"></p>
+    <p>
+        <label for="reviewerDepartment">Demo reviewer department:</label>
+        <select id="reviewerDepartment">
+            <option value="Finance">Finance</option>
+            <option value="IT">IT</option>
+            <option value="Operations">Operations</option>
+            <option value="Sales">Sales</option>
+            <option value="CustomerSupport">Customer Support</option>
+        </select>
+    </p>
+    <details class="request-panel">
+        <summary>Create a business request</summary>
+
+        <form id="createTaskForm">
+            <fieldset id="createTaskFields">
+                <label>
+                    Title
+                    <input name="title" required minlength="5" maxlength="120">
+                </label>
+
+                <label>
+                    Description
+                    <textarea name="description" maxlength="2000" rows="3"></textarea>
+                </label>
+
+                <label>
+                    Requesting department
+                    <select name="requestingDepartment">
+                        <option value="Sales" selected>Sales</option>
+                        <option value="Operations">Operations</option>
+                        <option value="Finance">Finance</option>
+                        <option value="IT">IT</option>
+                        <option value="CustomerSupport">Customer Support</option>
+                    </select>
+                </label>
+
+                <label>
+                    Owning department
+                    <select name="owningDepartment">
+                        <option value="Operations" selected>Operations</option>
+                        <option value="Finance">Finance</option>
+                        <option value="Sales">Sales</option>
+                        <option value="IT">IT</option>
+                        <option value="CustomerSupport">Customer Support</option>
+                    </select>
+                </label>
+
+                <label>
+                    Workflow type
+                    <select name="kind">
+                        <option value="PurchaseRequest">Purchase request</option>
+                        <option value="AccessRequest">Access request</option>
+                        <option value="ServiceRequest">Service request</option>
+                    </select>
+                </label>
+
+                <button type="submit" class="task-action">Create Request</button>
+            </fieldset>
+        </form>
+
+        <p id="createTaskError" class="form-error" role="alert"></p>
+        <p id="createTaskStatus" role="status"></p>
+    </details>
+    <p>
+        <label for="ownerFilter">Owning department:</label>
+        <select id="ownerFilter">
+            <option value="">All departments</option>
+            <option value="Operations">Operations</option>
+            <option value="Finance">Finance</option>
+            <option value="Sales">Sales</option>
+            <option value="IT">IT</option>
+            <option value="CustomerSupport">Customer Support</option>
+        </select>
+    </p>
+    <div id="tasks" class="board"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@10.0.0/dist/browser/signalr.min.js"></script>
+    <script>
+        const status = document.getElementById("connectionStatus");
+        const errorMessage = document.getElementById("error");
+        const taskList = document.getElementById("tasks");
+        let loadVersion = 0;
+
+        const handoffDrafts = new Map();
+
+        const createForm = document.getElementById("createTaskForm");
+        const createFields = document.getElementById("createTaskFields");
+        const createError = document.getElementById("createTaskError");
+        const createStatus = document.getElementById("createTaskStatus");
+
+        createForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            if (createFields.disabled) return;
+
+            const fields = new FormData(createForm);
+
+            const request = {
+                title: fields.get("title").trim(),
+                description: fields.get("description").trim(),
+                requestingDepartment: fields.get("requestingDepartment"),
+                owningDepartment: fields.get("owningDepartment"),
+                kind: fields.get("kind")
+            };
+
+            createFields.disabled = true;
+            createError.textContent = "";
+            createStatus.textContent = "Creating request…";
+
+            try {
+                const response = await fetch("/api/tasks", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(request)
+                });
+
+                if (!response.ok) {
+                    const problem = await response.json().catch(() => null);
+
+                    throw new Error(
+                        problem?.error ?? `Creation failed (${response.status}).`
+                    );
+                }
+
+                const createdTask = await response.json();
+
+                createForm.reset();
+                createStatus.textContent = `Created: ${createdTask.title}`;
+
+                await loadTasks();
+            } catch (error) {
+                createStatus.textContent = "";
+                createError.textContent = error.message;
+            } finally {
+                createFields.disabled = false;
+            }
+        });
+
+        async function runTaskAction(taskId, action, button, body = null) {
+            button.disabled = true;
+            errorMessage.textContent = "";
+
+            try {
+                const options = { method: "POST" };
+
+                if (body !== null) {
+                    options.headers = {
+                        "Content-Type": "application/json"
+                    };
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(
+                    `/api/tasks/${taskId}/${action}`,
+                    options
+                );
+
+                if (!response.ok) {
+                    const problem = await response.json().catch(() => null);
+
+                    throw new Error(
+                        problem?.error ?? `Request failed (${response.status}).`
+                    );
+                }
+
+                if (action === "handoff") {
+                    handoffDrafts.delete(taskId);
+                }
+
+                await loadTasks();
+            } catch (error) {
+                errorMessage.textContent = error.message;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        function appendHandoffControls(card, task) {
+            if (task.status !== "InProgress") return;
+
+            const panel = document.createElement("details");
+            panel.className = "handoff-controls";
+
+            const summary = document.createElement("summary");
+            summary.textContent = "Hand off to another department";
+
+            const form = document.createElement("form");
+            form.className = "handoff-form";
+
+            // This is fixed markup; task content is added separately.
+            form.innerHTML = `
+                <label>
+                    Target department
+                    <select name="targetDepartment" required>
+                        <option value="">Choose a department</option>
+                    </select>
+                </label>
+                <label>
+                    Handoff note
+                    <textarea name="note" required maxlength="1000"
+                        rows="3"></textarea>
+                </label>
+                <button type="submit" class="task-action">Hand Off</button>
+            `;
+
+            const targetSelect = form.querySelector("select");
+            const button = form.querySelector("button");
+
+            const noteInput = form.querySelector("textarea");
+
+            const draft = handoffDrafts.get(task.id) ?? {
+                targetDepartment: "",
+                note: "",
+                open: false
+            };
+
+            handoffDrafts.set(task.id, draft);
+
+            const departments = [
+                "Operations", "Finance", "Sales", "IT", "CustomerSupport"
+            ];
+
+            for (const department of departments) {
+                if (department === task.owningDepartment) continue;
+
+                const label = department === "CustomerSupport"
+                    ? "Customer Support"
+                    : department;
+
+                targetSelect.add(new Option(label, department));
+            }
+
+            targetSelect.value = draft.targetDepartment;
+            noteInput.value = draft.note;
+            panel.open = draft.open;
+
+            function saveDraft() {
+                draft.targetDepartment = targetSelect.value;
+                draft.note = noteInput.value;
+            }
+
+            form.addEventListener("input", saveDraft);
+            form.addEventListener("change", saveDraft);
+
+            panel.addEventListener("toggle", () => {
+                draft.open = panel.open;
+            });
+
+            form.addEventListener("submit", (event) => {
+                event.preventDefault();
+
+                if (button.disabled) return;
+
+                const fields = new FormData(form);
+
+                runTaskAction(task.id, "handoff", button, {
+                    targetDepartment: fields.get("targetDepartment"),
+                    note: fields.get("note").trim()
+                });
+            });
+
+            panel.append(summary, form);
+            card.append(panel);
+        }
+
+        function appendHandoffHistory(card, task) {
+            if (task.handoffs.length === 0) return;
+
+            const panel = document.createElement("details");
+            panel.className = "handoff-history";
+
+            const summary = document.createElement("summary");
+            summary.textContent = `Handoff history (${task.handoffs.length})`;
+
+            const list = document.createElement("ol");
+
+            const history = [...task.handoffs].sort(
+                (a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt)
+            );
+
+            for (const entry of history) {
+                const item = document.createElement("li");
+
+                const transfer = document.createElement("p");
+                transfer.textContent =
+                    `${entry.fromDepartment} → ${entry.toDepartment}`;
+
+                const note = document.createElement("p");
+                note.textContent = entry.note;
+
+                const timestamp = document.createElement("p");
+                timestamp.textContent =
+                    new Date(entry.occurredAt).toLocaleString();
+
+                item.append(transfer, note, timestamp);
+                list.append(item);
+            }
+
+            panel.append(summary, list);
+            card.append(panel);
+        }
+
+        async function loadTasks() {
+            const version = ++loadVersion;
+
+            try {
+                const response = await fetch("/api/tasks", {
+                    cache: "no-store"
+                });
+
+                if (!response.ok) {
+                    throw new Error("Could not load tasks.");
+                }
+
+                const tasks = await response.json();
+
+                if (version !== loadVersion) return;
+
+                tasks.sort((a, b) =>
+                    Date.parse(b.createdAt) - Date.parse(a.createdAt));
+
+                const selectedOwner = document.getElementById("ownerFilter").value;
+
+                const visibleTasks = tasks.filter(task =>
+                    selectedOwner === "" ||
+                    task.owningDepartment === selectedOwner
+                );
+                const columns = [
+                    { status: "Queued", label: "Queued" },
+                    { status: "InProgress", label: "In Progress" },
+                    { status: "AwaitingApproval", label: "Awaiting Approval" },
+                    { status: "Completed", label: "Completed" }
+                ];
+
+                const activeField = document.activeElement;
+
+                const focusedHandoff = activeField?.closest(".handoff-form")
+                    ? {
+                        taskId: activeField.closest(".task-card").dataset.taskId,
+                        name: activeField.name,
+                        start: activeField.selectionStart,
+                        end: activeField.selectionEnd
+                    }
+                    : null;
+
+                taskList.replaceChildren();
+
+                for (const column of columns) {
+                    const matchingTasks = visibleTasks.filter(
+                        task => task.status === column.status);
+
+                    const section = document.createElement("section");
+                    section.className = "column";
+
+                    const heading = document.createElement("h2");
+                    heading.textContent =
+                        `${column.label} (${matchingTasks.length})`;
+
+                    const list = document.createElement("ul");
+                    list.className = "task-list";
+
+                    for (const task of matchingTasks) {
+                        const card = document.createElement("li");
+                        card.className = "task-card";
+                        card.dataset.taskId = task.id;
+
+                        const title = document.createElement("h3");
+                        title.textContent = task.title;
+
+                        const description = document.createElement("p");
+                        description.textContent = task.description;
+
+                        const departments = document.createElement("p");
+                        departments.textContent =
+                            `Requested by: ${task.requestingDepartment}` +
+                            ` · Owner: ${task.owningDepartment}`;
+
+                        const approval = document.createElement("p");
+                        approval.textContent =
+                            `Approval: ${task.approvalDepartment ?? "Not required"}`;
+
+                        card.append(title, description, departments, approval);
+
+                        let action = null;
+                        let buttonLabel = "";
+
+                        if (task.status === "Queued") {
+                            action = "start";
+                            buttonLabel = "Start";
+                        } else if (task.status === "InProgress") {
+                            if (task.approvalDepartment !== null) {
+                                action = "submit-for-approval";
+                                buttonLabel = "Submit for Approval";
+                            } else {
+                                action = "complete";
+                                buttonLabel = "Complete";
+                            }
+                        } else if (
+                            task.status === "AwaitingApproval" &&
+                            task.approvalDepartment !== null
+                        ) {
+                            action = "approve";
+                            buttonLabel = "Approve";
+                        }
+
+                        if (action !== null) {
+                            const actionButton = document.createElement("button");
+                            actionButton.type = "button";
+                            actionButton.className = "task-action";
+                            actionButton.textContent = buttonLabel;
+
+                            actionButton.addEventListener("click", () => {
+                                const body = action === "approve"
+                                    ? {
+                                        reviewerDepartment:
+                                            document.getElementById("reviewerDepartment").value
+                                    }
+                                    : null;
+
+                                runTaskAction(task.id, action, actionButton, body);
+                            });
+
+                            card.append(actionButton);
+                        }
+
+                        appendHandoffControls(card, task);
+                        appendHandoffHistory(card, task);
+
+                        list.append(card);
+                    }
+
+                    if (matchingTasks.length === 0) {
+                        const empty = document.createElement("li");
+                        empty.className = "empty";
+                        empty.textContent = "No requests";
+                        list.append(empty);
+                    }
+
+                    section.append(heading, list);
+                    taskList.append(section);
+                }
+
+                if (focusedHandoff) {
+                    const field = taskList.querySelector(
+                        `[data-task-id="${focusedHandoff.taskId}"] ` +
+                        `.handoff-form [name="${focusedHandoff.name}"]`
+                    );
+
+                    if (field) {
+                        field.focus({ preventScroll: true });
+
+                        if (
+                            typeof field.setSelectionRange === "function" &&
+                            focusedHandoff.start != null
+                        ) {
+                            field.setSelectionRange(
+                                focusedHandoff.start,
+                                focusedHandoff.end
+                            );
+                        }
+                    }
+                }
+
+                errorMessage.textContent = "";
+            } catch (error) {
+                if (version === loadVersion) {
+                    errorMessage.textContent = error.message;
+                }
+            }
+        }
+
+        document.getElementById("ownerFilter")
+            .addEventListener("change", loadTasks);
+
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("/hubs/workflow")
+            .withAutomaticReconnect()
+            .build();
+
+        connection.on("TaskChanged", () => {
+            loadTasks();
+        });
+
+        connection.onreconnecting(() => {
+            status.textContent = "Reconnecting…";
+        });
+
+        connection.onreconnected(() => {
+            status.textContent = "Live updates connected";
+            loadTasks();
+        });
+
+        connection.onclose(() => {
+            status.textContent = "Disconnected. Reload the page to reconnect.";
+        });
+
+        async function startConnection() {
+            try {
+                await connection.start();
+                status.textContent = "Live updates connected";
+                await loadTasks();
+            } catch (error) {
+                status.textContent = "Connection failed. Retrying…";
+                setTimeout(startConnection, 5000);
+            }
+        }
+
+        loadTasks();
+        startConnection();
+    </script>
+</body>
+</html>

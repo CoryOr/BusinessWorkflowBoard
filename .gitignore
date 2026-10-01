@@ -1,0 +1,13 @@
+# Generated build files
+**/bin/
+**/obj/
+
+# Local database and SQLite sidecar files
+workflow.db
+workflow.db-*
+
+# Local IDE and macOS files
+.vs/
+*.user
+*.suo
+.DS_Store
